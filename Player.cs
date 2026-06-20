@@ -19,6 +19,11 @@ namespace Mario
         private bool _isJumping;
         private bool _isGrounded;
 
+        // Touch input tracking
+        private float _touchLeftBoundary;
+        private float _touchRightBoundary;
+        private bool _touchJumpActive;
+
         public Vector2 Position => _position;
         public Rectangle BoundingBox => new Rectangle((int)_position.X, (int)_position.Y, _width, _height);
 
@@ -28,14 +33,15 @@ namespace Mario
             _velocity = Vector2.Zero;
             _isJumping = false;
             _isGrounded = false;
+            _touchJumpActive = false;
         }
 
-        public void Update(GameTime gameTime, KeyboardState keyboardState, TileMap tileMap)
+        public void Update(GameTime gameTime, KeyboardState keyboardState, TileMap tileMap, TouchCollection touchCollection, Viewport viewport)
         {
             float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
-            // Handle input
-            HandleInput(keyboardState);
+            // Handle input (keyboard or touch)
+            HandleInput(keyboardState, touchCollection, viewport);
 
             // Apply gravity
             ApplyGravity(deltaTime);
@@ -51,7 +57,20 @@ namespace Mario
             if (_position.X + _width > 2560) _position.X = 2560 - _width;
         }
 
-        private void HandleInput(KeyboardState keyboardState)
+        private void HandleInput(KeyboardState keyboardState, TouchCollection touchCollection, Viewport viewport)
+        {
+            // Setup touch zones (only on Android)
+            _touchLeftBoundary = viewport.Width * 0.25f;
+            _touchRightBoundary = viewport.Width * 0.75f;
+
+            // Keyboard input (Desktop/Windows)
+            HandleKeyboardInput(keyboardState);
+
+            // Touch input (Android/Mobile)
+            HandleTouchInput(touchCollection, viewport);
+        }
+
+        private void HandleKeyboardInput(KeyboardState keyboardState)
         {
             // Horizontal movement
             if (keyboardState.IsKeyDown(Keys.Left) || keyboardState.IsKeyDown(Keys.A))
@@ -73,6 +92,49 @@ namespace Mario
                 _velocity.Y = JUMP_FORCE;
                 _isJumping = true;
                 _isGrounded = false;
+            }
+        }
+
+        private void HandleTouchInput(TouchCollection touchCollection, Viewport viewport)
+        {
+            if (touchCollection.Count == 0)
+            {
+                _velocity.X = 0;
+                _touchJumpActive = false;
+                return;
+            }
+
+            foreach (var touch in touchCollection)
+            {
+                if (touch.State == TouchLocationState.Pressed || touch.State == TouchLocationState.Moved)
+                {
+                    float touchX = touch.Position.X;
+                    float touchY = touch.Position.Y;
+
+                    // Left side - move left
+                    if (touchX < _touchLeftBoundary)
+                    {
+                        _velocity.X = -MOVE_SPEED;
+                    }
+                    // Right side - move right
+                    else if (touchX > _touchRightBoundary)
+                    {
+                        _velocity.X = MOVE_SPEED;
+                    }
+                    // Top area - jump
+                    else if (touchY < viewport.Height * 0.3f && _isGrounded && !_touchJumpActive)
+                    {
+                        _velocity.Y = JUMP_FORCE;
+                        _isJumping = true;
+                        _isGrounded = false;
+                        _touchJumpActive = true;
+                    }
+                }
+                else if (touch.State == TouchLocationState.Released)
+                {
+                    _velocity.X = 0;
+                    _touchJumpActive = false;
+                }
             }
         }
 
